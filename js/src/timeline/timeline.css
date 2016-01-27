@@ -53,17 +53,19 @@ div.timeline-event {
     box-sizing: border-box;
     color: #1a1a1a;
     display: inline-block;
+    height: 23px;
 }
 
 div.timeline-event-selected {
     background-color: #fff785;
     border-color: #ffc200;
     z-index: 999;
+    height: 50px;
 }
 
 /* TODO: use another color or pattern? */
 div.timeline-event-cluster {
-    background: url('img/cluster_bg.png') #97b0f8;
+    /*background: url('img/cluster_bg.png') #97b0f8;*/
     color: #ffffff;
 }
 
@@ -111,7 +113,8 @@ div.timeline-event-line {
 }
 
 div.timeline-event-content {
-    margin: 5px;
+    /*margin-left: 5px;*/
+    margin-top: 0;
     overflow: hidden;
     white-space: nowrap;
 }
@@ -191,7 +194,7 @@ div.timeline-navigation-new-line {
 }
 
 div.timeline-navigation-delete {
-    background: url('img/16/delete.png') no-repeat center;
+    /*background: url('img/16/delete.png') no-repeat center;*/
 }
 
 div.timeline-navigation-zoom-in {

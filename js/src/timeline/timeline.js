@@ -210,8 +210,8 @@ links.Timeline = function(container, options) {
         'groupsOrder' : true,
         'axisOnTop': false,
         'stackEvents': true,
-        'animate': true,
-        'animateZoom': true,
+        'animate': false,
+        'animateZoom': false,
         'cluster': false,
         'clusterMaxItems': 5,
         'style': 'box',
@@ -230,6 +230,11 @@ links.Timeline = function(container, options) {
         'NEW': "New",
         'CREATE_NEW_EVENT': "Create new event"
     };
+    
+    //
+    // Now we can set the givenproperties
+    //
+    this.setOptions(options);
 
     this.clientTimeOffset = 0;    // difference between client time and the time
     // set via Timeline.setCurrentTime()
@@ -257,9 +262,6 @@ links.Timeline = function(container, options) {
 
     // date interval must be initialized
     this.setVisibleChartRange(undefined, undefined, false);
-
-    // apply provided options
-    this.setOptions(options);
 
     // render for the first time
     this.render();
@@ -463,6 +465,8 @@ links.Timeline.prototype.setData = function(data) {
         for (var row = 0, rows = data.length; row < rows; row++) {
             var itemData = data[row];
             var item = this.createItem(itemData);
+			item.orig_row = row;
+            item.createDOM();
             items.push(item);
         }
     }
@@ -788,6 +792,37 @@ links.Timeline.prototype.setVisibleChartRangeNow = function() {
     this.setVisibleChartRange(startNew, endNew);
 };
 
+/**   
+ * Adjust the visible range such that the CUSTOM time is located in the center
+ * of the timeline
+ */
+links.Timeline.prototype.setVisibleChartRangeCustom = function() {
+	if (!this.options.min || !this.options.max || !this.getCustomTime) {
+		return;
+	}
+    var now = this.getCustomTime();
+
+    var diff = (this.end.valueOf() - this.start.valueOf());
+
+    var startNew = new Date(now.valueOf() - diff/2);
+    var endNew = new Date(startNew.valueOf() + diff);
+	
+	if (startNew >= this.options.min && endNew <= this.options.max) {
+		this.setVisibleChartRange(startNew, endNew);
+	}
+	else if (startNew < this.options.min) {
+		//console.log('start' )
+		//console.log(this.options.min)
+		//console.log('end')
+		//console.log(new Date(endNew.valueOf() + this.options.min.valueOf() - startNew.valueOf()))
+		this.setVisibleChartRange(this.options.min, new Date(endNew.valueOf() + this.options.min.valueOf() - startNew.valueOf()));
+	} else {
+		//console.log(new Date(startNew.valueOf() - endNew.valueOf() - this.options.max.valueOf()))
+		this.setVisibleChartRange(new Date(startNew.valueOf() - (endNew.valueOf() - this.options.max.valueOf())), this.options.max);
+	}
+  this.trigger("rangechange");
+};
+
 
 /**
  * Retrieve the current visible range in the timeline.
@@ -993,6 +1028,15 @@ links.Timeline.prototype.repaintFrame = function() {
             params.onDblClick = function (event) {me.onDblClick(event);};
             links.Timeline.addEventListener(dom.content, "dblclick", params.onDblClick);
         }
+		if (!params.onContextMenu) {
+			params.onContextMenu = function (event) {me.onContextMenu(event);};
+			links.Timeline.addEventListener(dom.content, "contextmenu", params.onContextMenu);
+		}
+		
+		/*if (!params.onMouseMove) {
+			params.onMouseMove = function (event) {me.onMouseMove(event);};
+			links.Timeline.addEventListener(dom.content, "onmousemove", params.onMouseMove);
+		}*/
 
         needsReflow = true;
     }
@@ -1393,7 +1437,8 @@ links.Timeline.prototype.repaintAxisMinorText = function (x, text) {
     }
 
     label.childNodes[0].nodeValue = text;
-    label.style.left = x + "px";
+    // HACK: hard-coded (SHB-678)
+    label.style.left = (x-10) + "px" ;
     label.style.top  = size.axis.labelMinorTop + "px";
     //label.title = title;  // TODO: this is a heavy operation
 
@@ -1427,7 +1472,9 @@ links.Timeline.prototype.repaintAxisMinorLine = function (x) {
         minorLines.push(line);
     }
 
-    line.style.top = axis.lineMinorTop + "px";
+    // line.style.top = axis.lineMinorTop + "px";
+    // HACK: hard-coded (SHB-678)
+    line.style.top =  "18px";
     line.style.height = axis.lineMinorHeight + "px";
     line.style.left = (x - axis.lineMinorWidth/2) + "px";
 
@@ -1899,11 +1946,20 @@ links.Timeline.prototype.repaintGroups = function() {
     var current = labels.length,
         needed = groups.length;
 
+    var groupedItems = this.getItemsByGroup(this.items);
     // overwrite existing group labels
     for (var i = 0, iMax = Math.min(current, needed); i < iMax; i++) {
         var group = groups[i];
         var label = labels[i];
-        label.innerHTML = this.getGroupName(group);
+        var name = this.getGroupName(group)
+        label.groupname = name;
+        var span = label.childNodes[1];
+        //span.className = "badge badge-timeline";
+        span.innerHTML = groupedItems[name].length + ' <i class="fa fa-play"></i>';
+        label.innerHTML = name;
+        label.appendChild(span);
+        //label.appendChild(span);
+        //label.innerHTML = name + '<span class="badge badge-timeline">'+ groupedItems[name].length + '</span>';
         label.style.display = '';
     }
 
@@ -1917,10 +1973,45 @@ links.Timeline.prototype.repaintGroups = function() {
         label.style.position = "absolute";
         if (options.groupsWidth === undefined) {
             label.style.whiteSpace = "nowrap";
+        } else {
+          label.style.width = options.groupsWidth;
         }
-        label.innerHTML = this.getGroupName(group);
-        frame.appendChild(label);
-        labels[i] = label;
+        var name = this.getGroupName(group)
+      label.groupnumber = i;
+      label.groupname = name;
+      var span = document.createElement("SPAN");
+      span.className = "badge badge-timeline";
+      span.innerHTML = groupedItems[name].length + ' <i class="fa fa-play"></i>';
+      label.innerHTML = name;
+      label.appendChild(span);
+      //label.innerHTML = name + '<span class="badge badge-timeline">'+ groupedItems[name].length + '</span>';
+      frame.appendChild(label);
+      labels[i] = label;
+  
+      links.Timeline.addEventListener(span, "mousedown", function(event) {
+        var linedom;
+        if (this.parentNode.groupnumber === 0) {
+          linedom = timeline.dom.axis.backgroundLine;
+        } else {
+          linedom = timeline.dom.groups.itemLines[this.parentNode.groupnumber - 1];
+        }
+        timeline.trigger('mousedown');
+        timeline.selectGroup(this.parentNode.groupname, this.parentNode, linedom, true);
+        event.stopPropagation();
+      });
+  
+      links.Timeline.addEventListener(label, "mousedown", function() {
+        // HACK
+        var linedom;
+        if (this.groupnumber === 0) {
+          linedom = timeline.dom.axis.backgroundLine;
+        } else {
+          linedom = timeline.dom.groups.itemLines[this.groupnumber - 1];
+        }
+        timeline.trigger('mousedown');
+        timeline.selectGroup(this.groupname, this, linedom);
+        event.stopPropagation();
+      });
 
         // create the grid line between the group labels
         var labelLine = document.createElement("DIV");
@@ -1943,6 +2034,8 @@ links.Timeline.prototype.repaintGroups = function() {
         itemLine.style.borderTopStyle = "solid";
         dom.content.insertBefore(itemLine, dom.content.firstChild);
         itemLines[i] = itemLine;
+		
+		
     }
 
     // remove redundant items from the DOM when needed
@@ -2117,7 +2210,7 @@ links.Timeline.prototype.repaintCustomTime = function() {
         visible = (x > -size.contentWidth && x < 2 * size.contentWidth);
     dom.customTime.style.display = visible ? '' : 'none';
     dom.customTime.style.left = x + "px";
-    dom.customTime.title = "Time: " + this.customTime;
+    //dom.customTime.title = "Time: " + this.customTime;
 };
 
 
@@ -2672,7 +2765,28 @@ links.Timeline.prototype.onTouchEnd = function(event) {
     links.Timeline.preventDefault(event);
 };
 
-
+links.Timeline.prototype.onContextMenu = function(event) { 
+	//console.log('should show context menu');
+	//console.log(event);
+	event.preventDefault();
+  	
+	
+  
+  
+	var contextItem = this.getItemIndex(links.Timeline.getTarget(event));
+  if (this.selection && this.selection.group && this.selection.group.indexOf(contextItem) != -1) {
+    //console.log('group selected');
+  } else {
+    if (!this.isSelected(contextItem)) {
+      this.selectItem(contextItem);
+    }
+  }
+  if (!this.selection) this.selection = {};
+  this.selection.contextItem = contextItem;
+	this.selection.mousex = links.Timeline.getPageX(event);
+	this.selection.mousey = links.Timeline.getPageY(event);
+	this.trigger('contextmenu');
+}
 /**
  * Start a moving operation inside the provided parent element
  * @param {Event} event       The event that occurred (required for
@@ -2716,6 +2830,9 @@ links.Timeline.prototype.onMouseDown = function(event) {
     else {
         params.itemIndex = this.getItemIndex(params.target);
         params.clusterIndex = this.getClusterIndex(params.target);
+        if (!params.clusterIndex && this.selection) {
+          this.selection.cluster = undefined;
+        }
     }
 
     params.customTime = (params.target === dom.customTime ||
@@ -2899,6 +3016,14 @@ links.Timeline.prototype.onMouseMove = function (event) {
             // Note: when animate==true, no redraw is needed here, its done by stackItems animation
         }
     }
+	/*else if(!params.end || !params.start) {
+		console.log('should trigger mouseenter');
+		if (!this.selection) this.selection = {};
+		this.selection.contextItem = this.getItemIndex(links.Timeline.getTarget(event));
+		this.selection.mousex = mouseX;
+		this.selection.mousey = mouseY;
+		this.trigger('mouseenter');
+	}*/
     else if (options.moveable) {
         var interval = (params.end.valueOf() - params.start.valueOf());
         var diffMillisecs = Math.round((-diffX) / size.contentWidth * interval);
@@ -3042,8 +3167,16 @@ links.Timeline.prototype.onMouseUp = function (event) {
     }
     else {
         if (!params.moved && !params.zoomed) {
-            // mouse did not move -> user has selected an item
-
+            // mouse did not move -> user has selected an item?
+			//console.log(params)
+			// this is the calaculated time of the click
+			if (params.mouseY - params.frameTop < 26) {
+				var x = params.mouseX - links.Timeline.getAbsoluteLeft(this.dom.content);
+				//console.log('clicked on AXIS !');
+				if (!this.selection) this.selection = {};
+				this.selection.axistime = this.screenToTime(x);
+				this.trigger('axis-click');
+			}
             if (params.target === this.dom.items.deleteButton) {
                 // delete item
                 if (this.selection && this.selection.index !== undefined) {
@@ -4774,7 +4907,7 @@ links.Timeline.prototype.getItem = function (index) {
  *                              {String} type (optional)
  *                              {Array} array with item data as is in getItem()
  */
-links.Timeline.prototype.getCluster = function (index) {
+links.Timeline.prototype.getCluster = function (index, selectitems) {
     if (index >= this.clusters.length) {
         throw "Cannot get cluster, index out of range";
     }
@@ -4795,6 +4928,12 @@ links.Timeline.prototype.getCluster = function (index) {
             // TODO could be nicer to be able to have the item index into the cluster
             if(this.items[j] == clusterItems[i])
             {
+              if (selectitems) {
+                console.log('select item ', j)
+                if (clusterItems[i].dom) {
+        				      clusterItems[i].select();
+                }
+              }
                 clusterData.items.push(this.getItem(j));
                 break;
             }
@@ -5100,9 +5239,11 @@ links.Timeline.prototype.getSelection = function() {
         if(this.selection.index !== undefined)
         {
             sel.push({"row": this.selection.index});
-        } else {
+        } else if (this.selection.cluster !== undefined){
             sel.push({"cluster": this.selection.cluster});
-        }
+        } else {
+			sel.push({"group": this.selection.group});
+		}
     }
     return sel;
 };
@@ -5168,6 +5309,11 @@ links.Timeline.prototype.isSelected = function (index) {
  * Unselect the currently selected event (if any)
  */
 links.Timeline.prototype.unselectItem = function() {
+  // TODO FIX THIS
+  for(var j = 0; j < this.items.length; j++){
+      this.items[j].unselect();
+  }
+	this.unselectGroup();
     if (this.selection && this.selection.index !== undefined) {
         var item = this.items[this.selection.index];
 
@@ -5182,6 +5328,63 @@ links.Timeline.prototype.unselectItem = function() {
         this.repaintDragAreas();
     }
 };
+
+links.Timeline.prototype.selectGroup = function(groupname, groupdomelement, linedom, playgroup) {
+   this.unselectItem();
+   this.unselectGroup();
+   if (!this.selection) {
+      this.selection = {};
+   }
+   this.selection.group = [];
+   this.selection.groupname = groupname;
+   this.selection.groupdom = groupdomelement;
+   this.selection.linedom = linedom;
+   links.Timeline.addClassName(groupdomelement, 'timeline-group-selected');
+   links.Timeline.addClassName(linedom, 'timeline-row-select');
+   
+	 var groupedItems = this.getItemsByGroup(this.items);
+	 //console.log('should filter a group: ' + groupname);
+	 //console.log(groupedItems);
+	 //console.log(groupedItems[groupname]);
+	 if (groupedItems[groupname]) {
+		for (var i = 0; i < groupedItems[groupname].length; i++) {
+			var item = this.items[groupedItems[groupname][i].orig_row];
+			if (item) {
+        if (item.dom) {
+				      item.select();
+        }
+				this.selection.group.push(groupedItems[groupname][i].orig_row);
+			}
+		}
+	 }
+   if (!playgroup) {
+	    this.trigger('groupselected');
+   } else {
+     this.trigger('playgroup');
+   }
+}
+
+/**
+ * Unselect the currently selected group (if any)
+ */
+links.Timeline.prototype.unselectGroup = function() {
+  if (this.selection && this.selection.group !== undefined) {
+    links.Timeline.removeClassName(this.selection.groupdom, 'timeline-group-selected');
+    links.Timeline.removeClassName(this.selection.linedom, 'timeline-row-select timeline-row-select-first');
+    for (var i = 0; i < this.selection.group.length; ++i) {
+      var item = this.items[this.selection.group[i]];
+      if (item && item.dom) {
+        var domItem = item.dom;
+        domItem.style.cursor = '';
+        item.unselect();
+      }
+    }
+
+    this.selection.group = undefined;
+  }
+};
+
+
 
 
 /**
@@ -5589,6 +5792,26 @@ links.Timeline.prototype.trigger = function (event) {
                 'time': new Date(this.customTime.valueOf())
             };
             break;
+		case 'groupselected':
+    case 'playgroup':
+			properties = {
+				'groupids' : this.selection.group,
+        'groupname': this.selection.groupname
+			};
+			break;
+		case 'axis-click':
+			properties = {
+				'axistime': this.selection.axistime
+			};
+			break;
+		case 'contextmenu':
+		case 'mouseenter':
+			properties = {
+				'contextItem' : this.selection.contextItem,
+				'mousex' : this.selection.mousex,
+				'mousey' : this.selection.mousey,		
+			};
+			break;
     }
 
     // trigger the links event bus
@@ -6460,19 +6683,32 @@ links.Timeline.StepDate.prototype.getLabelMinor = function(options, date) {
     if (date == undefined) {
         date = this.current;
     }
-
+	
+	//return this.addZeros(date.getUTCHours(), 2) + ":" + this.addZeros(date.getUTCMinutes(), 2) + ":" + this.addZeros(date.getUTCSeconds(), 2);
+	
     switch (this.scale) {
-        case links.Timeline.StepDate.SCALE.MILLISECOND:  return String(date.getMilliseconds());
-        case links.Timeline.StepDate.SCALE.SECOND:       return String(date.getSeconds());
-        case links.Timeline.StepDate.SCALE.MINUTE:
-            return this.addZeros(date.getHours(), 2) + ":" + this.addZeros(date.getMinutes(), 2);
-        case links.Timeline.StepDate.SCALE.HOUR:
-            return this.addZeros(date.getHours(), 2) + ":" + this.addZeros(date.getMinutes(), 2);
-        case links.Timeline.StepDate.SCALE.WEEKDAY:      return options.DAYS_SHORT[date.getDay()] + ' ' + date.getDate();
-        case links.Timeline.StepDate.SCALE.DAY:          return String(date.getDate());
-        case links.Timeline.StepDate.SCALE.MONTH:        return options.MONTHS_SHORT[date.getMonth()];   // month is zero based
-        case links.Timeline.StepDate.SCALE.YEAR:         return String(date.getFullYear());
-        default:                                         return "";
+        case links.Timeline.StepDate.SCALE.MILLISECOND: 
+        case links.Timeline.StepDate.SCALE.SECOND:      
+          if (date.getUTCHours() > 0)
+			        return this.addZeros(date.getUTCHours(), 2) + ":" + this.addZeros(date.getUTCMinutes(), 2) + ":" + this.addZeros(date.getUTCSeconds(), 2);
+          else 
+              return this.addZeros(date.getUTCMinutes(), 2) + ":" + this.addZeros(date.getUTCSeconds(), 2);
+        case links.Timeline.StepDate.SCALE.MINUTE:			
+        case links.Timeline.StepDate.SCALE.HOUR:		
+        case links.Timeline.StepDate.SCALE.WEEKDAY:     
+        case links.Timeline.StepDate.SCALE.DAY:         
+        case links.Timeline.StepDate.SCALE.MONTH:        
+        case links.Timeline.StepDate.SCALE.YEAR:   
+          if (date.getUTCHours() > 0)      
+			       return this.addZeros(date.getUTCHours(), 2) + ":" + this.addZeros(date.getUTCMinutes(), 2);
+          else
+            return this.addZeros(date.getUTCMinutes(), 2);
+          
+        default:    
+          if (date.getUTCHours() > 0)                                     
+			       return this.addZeros(date.getUTCHours(), 2) + ":" + this.addZeros(date.getUTCMinutes(), 2);
+          else
+            return this.addZeros(date.getUTCMinutes(), 2);
     }
 };
 
